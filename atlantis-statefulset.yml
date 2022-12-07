@@ -1,0 +1,93 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: atlantis
+  labels:
+    app: atlantis
+spec:
+  serviceName: atlantis
+  replicas: 1
+  selector:
+    matchLabels:
+      app: atlantis
+  template:
+    metadata:
+      labels:
+        app: atlantis
+    spec:
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        runAsUser: 100
+      volumes:
+      containers:
+        - name: atlantis
+          image: ghcr.io/runatlantis/atlantis:v0.21.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - server
+          ports:
+          - name: atlantis
+            containerPort: 4141
+          env:
+          - name: ATLANTIS_DATA_DIR
+            value: /atlantis-data
+          - name: ATLANTIS_REPO_ALLOWLIST
+            value: github.com/example/atlantis-example
+          - name: ATLANTIS_PORT
+            value: "4141"
+          - name: ATLANTIS_ATLANTIS_URL
+            value: https://dashboard.adv-k8s-atl.com
+          - name: ATLANTIS_GH_USER
+            value: atlantis-user
+          - name: ATLANTIS_GH_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: atlantis-secret
+                key: github_token
+          - name: ATLANTIS_GH_WEBHOOK_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: atlantis-secret
+                key: github_secret
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 4141
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 60
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 4141
+              scheme: HTTP
+            initialDelaySeconds: 5
+            periodSeconds: 60
+            timeoutSeconds: 5
+            successThreshold: 1
+            failureThreshold: 5
+          volumeMounts:
+          - name: atlantis-data
+            mountPath: /atlantis-data
+          resources:
+            limits:
+              cpu: 100m
+              memory: 1Gi
+            requests:
+              cpu: 100m
+              memory: 1Gi
+  volumeClaimTemplates:
+  - metadata:
+      name: atlantis-data
+    spec:
+      accessModes: ["ReadWriteOnce"] # Volume should not be shared by multiple nodes.
+      storageClassName: local-storage
+      resources:
+        requests:
+          # The biggest thing Atlantis stores is the Git repo when it checks it out.
+          # It deletes the repo after the pull request is merged.
+          storage: 5Gi
